@@ -1,19 +1,20 @@
 /*
  * File: i2c_master.c
  * Description: Low-level I2C driver for PIC24FJ64GA702 with Bus Recovery
- * Author: Embedded Systems Expert
  */
 
 #include <xc.h>
-#include <libpic30.h> // For __delay_us
+#include <stdint.h>
 #include <stdbool.h>
-#include "i2c_master.h"
 
 // System Frequency Definitions
 // Adjust these to match your oscillator configuration (Configuration Bits)
 #define FOSC    8000000UL      // 8 MHz Internal Oscillator
 #define FCY     (FOSC/2)       // 4 MHz Instruction Cycle
 #define FSCL    100000UL       // 100 kHz I2C Bus Speed
+
+#include <libpic30.h>
+#include "i2c_master.h"
 
 /*
  * Function: I2C_Init
@@ -26,12 +27,12 @@ void I2C_Init(void) {
     // 2. Calculate Baud Rate Generator (BRG)
     // Formula: ((FCY/FSCL) - (FCY/10000000)) - 1
     // For 4MHz FCY and 100kHz FSCL: ((40) - (0.4)) - 1 = ~39
-    I2C1BRG = 39; 
+    I2C1BRG = 39;
 
     // 3. Configure Slew Rate
     // DISSLW = 1: Slew rate control disabled (Standard Mode 100kHz)
     // DISSLW = 0: Slew rate control enabled (Fast Mode 400kHz)
-    I2C1CONLbits.DISSLW = 1; 
+    I2C1CONLbits.DISSLW = 1;
 
     // 4. Enable I2C Module
     I2C1CONLbits.I2CEN = 1;
@@ -45,30 +46,25 @@ void I2C_Init(void) {
 void I2C_Reset_Bus(void) {
     // 1. Disable I2C to relinquish control of pins to GPIO module
     I2C1CONLbits.I2CEN = 0;
-    
+
     // 2. Configure SCL1 (RB8) and SDA1 (RB9) as Inputs first
-    // Note: Check your specific package pinout! 
-    // On 28-pin SSOP: RB8=Pin14, RB9=Pin15
-    TRISBbits.TRISB8 = 1; 
+    TRISBbits.TRISB8 = 1;
     TRISBbits.TRISB9 = 1;
 
     // 3. Check if Bus is actually stuck (SDA Low while SCL High)
-    // If SDA is High, no reset needed (usually).
     if (PORTBbits.RB9 == 0) {
-        
         // 4. Configure SCL as Output to drive clock
-        TRISBbits.TRISB8 = 0; 
+        TRISBbits.TRISB8 = 0;
 
         // 5. Toggle SCL 9 times
-        for(int i=0; i<9; i++) {
+        for (int i = 0; i < 9; i++) {
             LATBbits.LATB8 = 0; // Drive Low
             __delay_us(10);     // Half period (50kHz equiv)
             LATBbits.LATB8 = 1; // Drive High
             __delay_us(10);
         }
-        
+
         // 6. Generate a STOP condition sequence manually
-        // SDA Low, then SCL High, then SDA High
         TRISBbits.TRISB9 = 0;   // SDA Output
         LATBbits.LATB9 = 0;     // SDA Low
         __delay_us(10);
@@ -77,7 +73,7 @@ void I2C_Reset_Bus(void) {
         LATBbits.LATB9 = 1;     // SDA High (STOP)
         __delay_us(10);
     }
-    
+
     // 7. Re-Initialize the I2C Module
     I2C_Init();
 }
@@ -119,13 +115,13 @@ bool I2C_Write_Byte(uint8_t data) {
 uint8_t I2C_Read_Byte(bool ack) {
     I2C1CONLbits.RCEN = 1;      // Enable Receive Mode
     while (I2C1CONLbits.RCEN);  // Wait for 8 bits
-    
+
     uint8_t data = I2C1RCV;     // Read buffer
 
     // Acknowledge Sequence
-    I2C1CONLbits.ACKDT = ack? 0 : 1; // 0=ACK, 1=NACK
+    I2C1CONLbits.ACKDT = ack ? 0 : 1; // 0=ACK, 1=NACK
     I2C1CONLbits.ACKEN = 1;     // Start ACK sequence
     while (I2C1CONLbits.ACKEN); // Wait for ACK completion
-    
+
     return data;
 }
